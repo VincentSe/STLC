@@ -1903,7 +1903,7 @@ Lemma areBetaEquivalentDB_app_right : forall t u r,
     areBetaEquivalentDB t u -> areBetaEquivalentDB (BApp t r) (BApp u r).
 Proof.
   intros t u r H. induction H.
-  - intros. apply rst_step. simpl. 
+  - intros. apply rst_step. simpl.
     apply in_or_app. right. apply in_or_app. left. apply in_map_iff.
     exists y. split. reflexivity. exact H.
   - apply rst_refl.
@@ -2174,6 +2174,8 @@ Qed.
    And t is regarded as a computation leading to this value. *)
 
 (* Definition of parallel beta-reduction.
+   It is parallel because the t=BApp s r case draws a reduction in both
+   s and r simultaneously, whereas betaReduce draws in each one separately.
    It makes beta reduction confluent in less steps, for example M=(λx.xx)(Ia) where I=λy.y.
    We can reduce in 2 steps
    (λx.xx)(Ia) --beta-> (λx.xx)a --beta-> aa
@@ -2188,11 +2190,11 @@ Fixpoint parallelBeta (t : DeBruijnTerm) : list DeBruijnTerm :=
   | BVar v => BVar v :: nil (* makes parallelBeta reflexive, to collect all standard beta reductions *)
   | BLam s => map BLam (parallelBeta s)
   | BApp s r =>
+      flat_map (fun rRed =>
       (match s with
-       | BLam u => flat_map (fun uRed => map (fun rRed => decrFreeVars (Subst uRed (incrFreeVars rRed) 0)) (parallelBeta r))
-                     (parallelBeta u)
+       | BLam u => map (fun uRed => decrFreeVars (Subst uRed (incrFreeVars rRed) 0)) (parallelBeta u)
        | _ => nil
-       end) ++ flat_map (fun sRed => map (fun rRed => BApp sRed rRed) (parallelBeta r)) (parallelBeta s)
+       end) ++ map (fun sRed => BApp sRed rRed) (parallelBeta s)) (parallelBeta r)
   end.
 
 Lemma parallelBeta_refl : forall (t : DeBruijnTerm),
@@ -2201,9 +2203,9 @@ Proof.
   induction t.
   - left. reflexivity.
   - simpl. apply in_map_iff. exists t. split. reflexivity. exact IHt.
-  - simpl. apply in_or_app. right.
-    apply in_flat_map. exists t1. split. exact IHt1.
-    apply in_map_iff. exists t2. split. reflexivity. exact IHt2.
+  - simpl. apply in_flat_map. exists t2. split. exact IHt2.
+    apply in_or_app. right.
+    apply in_map_iff. exists t1. split. reflexivity. exact IHt1.
 Qed.
 
 Lemma betaReduce_in_parallel : forall t u,
@@ -2217,15 +2219,17 @@ Proof.
     intros. simpl in H. apply in_app_or in H. destruct H.
     + (* u = t1[x_0:=t2] *)
       destruct t1; try contradiction H. simpl in H. destruct H. 2: contradiction H.
-      subst u. simpl. apply in_or_app. left. apply in_flat_map. exists t1.
-      split. apply parallelBeta_refl. apply in_map_iff. exists t2.
+      subst u. simpl. apply in_flat_map. exists t2. split.
+      apply parallelBeta_refl. apply in_or_app. left.
+      apply in_map_iff. exists t1.
       split. reflexivity. apply parallelBeta_refl.
-    + apply in_app_or in H. simpl. apply in_or_app. right.
-      apply in_flat_map. destruct H. apply in_map_iff in H. destruct H, H. subst u.
-      exists x. split. apply IHt1, H0. apply in_map_iff. exists t2.
-      split. reflexivity. apply parallelBeta_refl. apply in_map_iff in H. destruct H,H.
-      subst u. exists t1. split. apply parallelBeta_refl. apply in_map_iff.
-      exists x. split. reflexivity. apply IHt2, H0.
+    + apply in_app_or in H. simpl. apply in_flat_map.
+      destruct H. apply in_map_iff in H. destruct H, H. subst u.
+      exists t2. split. apply parallelBeta_refl. apply in_or_app. right.
+      apply in_map_iff. exists x. split. reflexivity. apply IHt1, H0.
+      apply in_map_iff in H. destruct H,H. subst u. exists x.
+      split. apply IHt2, H0. apply in_or_app. right.
+      apply in_map_iff. exists t1. split. reflexivity. apply parallelBeta_refl.
 Qed.
 
 Lemma parallelBeta_in_betaReduceTrans : forall t u,
@@ -2238,13 +2242,14 @@ Proof.
   - intros. simpl in H. apply in_map_iff in H. destruct H, H. subst u.
     specialize (IHt x H0). destruct IHt as [n H]. exists n.
     rewrite betaReduceTrans_lam. apply in_map, H.
-  - intros. simpl in H. apply in_app_or in H. destruct H.
-    + destruct t1; try contradiction H. apply in_flat_map in H.
-      destruct H, H. apply in_map_iff in H0. destruct H0, H0. subst u.
-      specialize (IHt1 (BLam x) (in_map BLam _ _ H)). destruct IHt1 as [n H0].
+  - intros. simpl in H. apply in_flat_map in H.
+    destruct H as [x0 [H H0]]. apply in_app_or in H0. destruct H0.
+    + destruct t1; try contradiction H0. 
+      apply in_map_iff in H0. destruct H0, H0. subst u.
+      specialize (IHt1 (BLam x) (in_map BLam _ _ H1)). destruct IHt1 as [n H0].
       rewrite betaReduceTrans_lam in H0. apply in_map_iff in H0. destruct H0, H0.
       inversion H0. subst x1. clear H0.
-      specialize (IHt2 x0 H1). destruct IHt2 as [p H0].
+      specialize (IHt2 x0 H). destruct IHt2 as [p H0].
       assert (In (incrFreeVars x0) (betaReduceTrans (incrFreeVars t2) p)).
       unfold incrFreeVars. rewrite mapFreeVars_betaTrans. apply in_map, H0.
       pose proof (betaReduceTrans_Subst2 p x _ _ 0 H3) as [k H4].
@@ -2253,25 +2258,12 @@ Proof.
       unfold decrFreeVars. rewrite mapFreeVars_betaTrans. apply in_map.
       rewrite betaReduceTrans_add. apply in_flat_map. exists (Subst x (incrFreeVars t2) 0).
       split. apply betaReduceTrans_Subst, H2. exact H4.
-    + apply in_flat_map in H. destruct H, H. apply in_map_iff in H0. destruct H0, H0. subst u.
-      specialize (IHt1 _ H). destruct IHt1 as [n H0].
-      specialize (IHt2 _ H1). destruct IHt2 as [p H2]. exists (n+p).
+    + apply in_map_iff in H0. destruct H0, H0. subst u.
+      specialize (IHt1 _ H1). destruct IHt1 as [n H0].
+      specialize (IHt2 _ H). destruct IHt2 as [p H2]. exists (n+p).
       rewrite betaReduceTrans_add. apply in_flat_map. exists (BApp t1 x0). split.
       apply betaReduceTrans_app_right. exact H2.
       apply betaReduceTrans_app_left. exact H0.
-Qed.
-
-(* The example above, that parallel reduces in 1 step,
-   instead of 2 or 3 usual steps. *)
-Lemma parallelBeta_test : forall (a : DeBruijnTerm),
-    In (BApp a a) (parallelBeta (BApp (BLam (BApp (BVar 0) (BVar 0)))
-                                   (BApp (BLam (BVar 0)) a))).
-Proof.
-  intros a. simpl. apply in_or_app. left. apply in_or_app. left.
-  rewrite map_app. apply in_or_app. left. rewrite app_nil_r, map_map.
-  apply in_map_iff. exists a. split. 2: apply parallelBeta_refl.
-  rewrite incrFreeVars_decr. unfold decrFreeVars, incrFreeVars.
-  simpl. rewrite mapFreeVars_assoc. simpl. rewrite mapFreeVars_id. reflexivity.
 Qed.
 
 Fixpoint DeBruijnTerm_depth (t : DeBruijnTerm) : nat :=
@@ -2297,14 +2289,17 @@ Proof.
   - intros. simpl. simpl in H. apply le_S_n in H. rewrite IHn, map_map, map_map.
     reflexivity. exact H.
   - intros. simpl. simpl in H. apply le_S_n in H.
-    rewrite (IHn t1), (IHn t2). rewrite map_app.
-    apply f_equal2.
-    3: refine (Nat.le_lt_trans _ _ _ _ H); apply Nat.le_max_r.
-    3: refine (Nat.le_lt_trans _ _ _ _ H); apply Nat.le_max_l.
-    destruct t1; try reflexivity. simpl. rewrite flat_map_concat_map.
-    rewrite flat_map_concat_map. rewrite concat_map. rewrite map_map.
-    rewrite (IHn t1). apply f_equal. rewrite map_map. apply map_ext.
-    intros. rewrite map_map, map_map. apply map_ext. intros b.
+    rewrite (IHn t1), (IHn t2).
+    2: refine (Nat.le_lt_trans _ _ _ _ H); apply Nat.le_max_r.
+    2: refine (Nat.le_lt_trans _ _ _ _ H); apply Nat.le_max_l.
+    rewrite flat_map_concat_map.
+    rewrite flat_map_concat_map.
+    rewrite map_map. rewrite concat_map, map_map. apply f_equal.
+    apply map_ext. intros b. rewrite map_map. rewrite map_app, map_map.
+    apply f_equal2. 2: reflexivity.
+    destruct t1; try reflexivity. 
+    simpl. rewrite map_map.
+    rewrite (IHn t1). rewrite map_map. apply map_ext. intros a.
     unfold incrFreeVars, decrFreeVars.
     rewrite mapFreeVars_assoc, mapFreeVars_assoc.
     (* Now the redex case *)
@@ -2323,12 +2318,11 @@ Proof.
     refine (Nat.le_lt_trans _ _ _ _ H).
     apply (Nat.le_trans _ (DeBruijnTerm_depth (BLam t1))).
     apply le_S, Nat.le_refl. apply Nat.le_max_l.
-    rewrite flat_map_concat_map, map_map.
-    rewrite flat_map_concat_map. rewrite concat_map, map_map.
-    apply f_equal. apply map_ext. intros. rewrite map_map, map_map. reflexivity.
   - intros. apply (H (S (DeBruijnTerm_depth t))). apply Nat.le_refl.
 Qed.
 
+(* This is the main property that parallelBeta has and betaReduce does not.
+   betaReduces takes many steps instead of 1 here, see betaReduce_Subst2. *)
 Lemma parallelBeta_Subst : forall (t u r s : DeBruijnTerm) (v : nat),
     In s (parallelBeta r)
     -> In u (parallelBeta t)
@@ -2342,16 +2336,15 @@ Proof.
     exists (Subst x (incrFreeVars s) (S v)). split. reflexivity.
     apply IHt. 2: exact H1. unfold incrFreeVars. rewrite mapFreeVars_parallelBeta.
     apply in_map_iff. exists s. split. reflexivity. exact H.
-  - intros. simpl in H0. apply in_app_or in H0. destruct H0.
+  - intros. simpl in H0. apply in_flat_map in H0. destruct H0 as [y [H0 H1]].
+    apply in_app_or in H1. destruct H1.
     + (* the redex case *)
-      destruct t1; try contradiction H0. apply in_flat_map in H0.
-      destruct H0, H0. apply in_map_iff in H1. destruct H1 as [y H1]. destruct H1.
-      subst u. simpl. apply in_or_app. left. apply in_flat_map.
+      destruct t1; try contradiction H1. 
+      apply in_map_iff in H1. destruct H1 as [x H1]. destruct H1.
+      subst u. simpl. apply in_flat_map.
+      exists (Subst y s v). split. exact (IHt2 y r s v H H0). 
+      apply in_or_app. left. apply in_map_iff.
       exists (Subst x (incrFreeVars s) (S v)). split.
-      simpl in IHt1. specialize (IHt1 (BLam x) r s v H (in_map BLam _ _ H0)).
-      apply in_map_iff in IHt1. destruct IHt1, H1. simpl in H1. inversion H1.
-      subst x0. exact H3. apply in_map_iff. exists (Subst y s v).
-      split. 2: exact (IHt2 y r s v H H2).
       unfold incrFreeVars. rewrite Subst_mapFreeVars_comm.
       rewrite <- SubstSubst_disjoint.
       3: intro H1; discriminate H1.
@@ -2363,39 +2356,16 @@ Proof.
       intro abs. rewrite mapFreeVars_freevars in abs.
       apply in_map_iff in abs. destruct abs, H1. discriminate H1.
       intros. inversion H1. reflexivity.
-    + apply in_flat_map in H0. destruct H0, H0. apply in_map_iff in H1.
-      destruct H1, H1. subst u. simpl. apply in_or_app. right.
-      apply in_flat_map. exists (Subst x s v).
-      split. exact (IHt1 x r s v H H0). apply in_map_iff.
-      exists (Subst x0 s v). split. reflexivity. exact (IHt2 x0 r s v H H2).
+      simpl in IHt1. specialize (IHt1 (BLam x) r s v H (in_map BLam _ _ H2)).
+      apply in_map_iff in IHt1. destruct IHt1, H1. simpl in H1. inversion H1.
+      subst x0. exact H3.
+    + apply in_map_iff in H1.
+      destruct H1, H1. subst u. simpl. apply in_flat_map.
+      exists (Subst y s v). split. exact (IHt2 y r s v H H0).
+      apply in_or_app. right. apply in_map_iff.
+      exists (Subst x s v).
+      split. reflexivity. exact (IHt1 x r s v H H2). 
 Qed.
-
-(* In u (parallelBeta t) is an inductive Prop. Here is its induction principle.
-Lemma parallelBeta_ind : forall (P : DeBruijnTerm -> DeBruijnTerm -> Prop),
-    (forall (v:nat), P (BVar v) (BVar v))
-    -> (forall t u, In u (parallelBeta t) -> P t u -> P (BLam t) (BLam u))
-    -> (forall t1 t2 u1 u2,
-           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) -> 
-           P (BApp (BLam t1) t2) (decrFreeVars (Subst u1 (incrFreeVars u2) 0)))
-    -> (forall t1 t2 u1 u2,
-           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) -> 
-           P t1 u1 -> P t2 u2 ->
-           P (BApp t1 t2) (BApp u1 u2))
-    -> forall t u, In u (parallelBeta t) -> P t u.
-Proof.
-  intros P pVar pLam pRedex pApp. induction t.
-  - intros. simpl in H. destruct H. rewrite <- H. apply pVar. contradiction H.
-  - intros. simpl in H. apply in_map_iff in H. destruct H, H. subst u. apply pLam. exact H0.
-    apply IHt, H0. 
-  - intros. simpl in H. apply in_app_or in H. destruct H.
-    + destruct t1; try contradiction H. apply in_flat_map in H.
-      destruct H, H. apply in_map_iff in H0. destruct H0, H0. subst u.
-      apply pRedex. exact H. exact H1.
-    + apply in_flat_map in H. destruct H, H. apply in_map_iff in H0.
-      destruct H0, H0. subst u. apply pApp. exact H. exact H1.
-      apply IHt1. exact H. apply IHt2. exact H1.
-Qed.
- *)
 
 Definition diamond (f : DeBruijnTerm -> list DeBruijnTerm) : Prop :=
   forall (t r s : DeBruijnTerm),
@@ -2410,77 +2380,81 @@ Proof.
     intros. simpl in H. destruct H. 2: contradiction H. subst r.
     simpl in H0. destruct H0. 2: contradiction H. subst s. simpl.
     exists (BVar n). split; left; reflexivity.
-  - intros. simpl in H. simpl in H0. apply in_map_iff in H. destruct H, H. subst r.
+  - (* t = BLam t'. This case is also trivial, we just commute BLam
+       with the induction hypothesis on t'. *)
+    intros. simpl in H. simpl in H0. apply in_map_iff in H. destruct H, H. subst r.
     apply in_map_iff in H0. destruct H0, H. subst s.
     destruct (IHt _ _ H1 H0) as [u H]. exists (BLam u). simpl. split.
     apply in_map_iff. exists u. split. reflexivity. apply H.
     apply in_map_iff. exists u. split. reflexivity. apply H.
-  - (* t = BApp t1 t2 *)
-    intros. simpl in H. simpl in H0. apply in_app_or in H. apply in_app_or in H0.
-    destruct H, H0.
-    + destruct t1; try contradiction H.
-      apply in_flat_map in H0. destruct H0, H0. apply in_flat_map in H. destruct H, H.
-      apply in_map_iff in H2. destruct H2, H2. subst r.
-      apply in_map_iff in H1. destruct H1, H1. subst s.
-      specialize (IHt1 _ _ (in_map BLam _ _ H0) (in_map BLam _ _ H)).
-      destruct IHt1 as [y H1]. destruct H1.
-      specialize (IHt2 _ _ H2 H3). destruct IHt2 as [z H5]. destruct H5.
-      simpl in H4. apply in_map_iff in H4. destruct H4, H4. subst y.
-      exists (mapFreeVars Nat.pred (Subst x3 (incrFreeVars z) 0)). split. 
-      unfold decrFreeVars. rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists (Subst x3 (incrFreeVars z) 0). split. reflexivity.
-      apply parallelBeta_Subst. 2: exact H7. unfold incrFreeVars.
-      rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H6. 
-      unfold decrFreeVars. rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists (Subst x3 (incrFreeVars z) 0). split. reflexivity.
+  - (* t = BApp t1 t2, the hard case. *)
+    intros r s H H0. simpl in H. simpl in H0.
+    apply in_flat_map in H. destruct H as [r2 [H2 H]].
+    apply in_flat_map in H0. destruct H0 as [s2 [H1 H0]].
+    specialize (IHt2 s2 r2 H1 H2) as [u2 H5].
+    apply in_app_or in H. apply in_app_or in H0. destruct H, H0.
+    + (* Both r and s are redexes : r = r1[x_0 := r2], s = s1[x_0 := s2]. *)
+      destruct t1; try contradiction H. (* t1 is a lambda *)
+      apply in_map_iff in H0. destruct H0 as [s1 [H4 H0]]. subst s.
+      apply in_map_iff in H. destruct H as [r1 [H4 H]]. subst r.
+      specialize (IHt1 _ _ (in_map BLam _ _ H0) (in_map BLam _ _ H)) as [u1 H3].
+      destruct H3. destruct H5.
+      simpl in H4. apply in_map_iff in H4. destruct H4 as [u1Body [H4 H7]]. subst u1.
+      simpl in H3. apply in_map_iff in H3. destruct H3, H3. inversion H3. subst x.
+      clear H3. exists (decrFreeVars (Subst u1Body (incrFreeVars u2) 0)).
+      split; unfold decrFreeVars; rewrite mapFreeVars_parallelBeta; apply in_map_iff
+      ; exists (Subst u1Body (incrFreeVars u2) 0); split; try reflexivity
+      ; apply parallelBeta_Subst; try assumption; unfold incrFreeVars
+      ; rewrite mapFreeVars_parallelBeta; apply in_map_iff; exists u2; split
+      ; try reflexivity; assumption.
+    + (* r is a redex, s is a sub-application : r = r1[x_0 := r2], s = s1 s2.
+         As in the double redex case above, the solution u is u1[x_0 := u2],
+         because s1 is also a BLam. *)
+      destruct t1; try contradiction H. (* t1 is a lambda *)
+      apply in_map_iff in H0. destruct H0 as [s1 [H0 H3]]. subst s.
+      apply in_map_iff in H. destruct H as [r1 [H H0]]. subst r.
+      specialize (IHt1 s1 (BLam r1) H3 (in_map BLam _ _ H0)) as [u1 H]. simpl in H3.
+      apply in_map_iff in H3. destruct H3 as [s1Body [H3 H7]]. subst s1.
+      destruct H. simpl in H3. apply in_map_iff in H3. destruct H3 as [u1Body [H4 H6]]. subst u1.
+      simpl in H. apply in_map_iff in H. destruct H,H. inversion H. subst x. clear H.
+      unfold decrFreeVars. rewrite mapFreeVars_parallelBeta.
+      destruct H5. exists (decrFreeVars (Subst u1Body (incrFreeVars u2) 0)). split.
+      (* The redex, with parallelBeta_Subst as the double-redex case above *)
+      apply in_map_iff. exists (Subst u1Body (incrFreeVars u2) 0). split. reflexivity.
       apply parallelBeta_Subst. unfold incrFreeVars.
       rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H5. 
-      simpl in H1. apply in_map_iff in H1. destruct H1, H1. inversion H1.
-      rewrite <- H9. exact H4.
-    + apply in_flat_map in H0. destruct H0, H0. apply in_map_iff in H1. destruct H1, H1.
-      subst s. destruct t1; try contradiction H. apply in_flat_map in H. destruct H, H.
-      apply in_map_iff in H1. destruct H1, H1. subst r.
+      exists u2. split. reflexivity. exact H4. exact H6.
+      (* The sub-application, by the definition of parallelBeta *)
+      simpl. apply in_flat_map. exists u2. split.
+      exact H. apply in_or_app. left. (* s1 redex *)
+      apply in_map_iff. exists u1Body.
+      split. reflexivity. exact H3.
+    + (* r is a sub-application, s is a redex.
+         This case just swaps r and s in the previous case. *)
+      destruct t1; try contradiction H0. (* t1 is a lambda *)
+      apply in_map_iff in H0. destruct H0 as [s1 [H0 H3]]. subst s.
+      apply in_map_iff in H. destruct H as [r1 [H H0]]. subst r.
       unfold decrFreeVars. rewrite mapFreeVars_parallelBeta.
-      specialize (IHt1 x (BLam x1) H0 (in_map BLam _ _ H)). simpl in H0.
-      apply in_map_iff in H0. destruct H0, H0. subst x. simpl in IHt1.
-      destruct IHt1 as [y H0]. destruct H0. apply in_map_iff in H4. destruct H4, H4. subst y.
-      specialize (IHt2 x2 x0 H3 H2). destruct IHt2 as [z H4]. destruct H4.
-      exists (mapFreeVars Nat.pred (Subst x (incrFreeVars z) 0)). split.
-      apply in_map_iff. exists (Subst x (incrFreeVars z) 0). split. reflexivity.
-      apply parallelBeta_Subst. 2: exact H5. unfold incrFreeVars.
-      rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H4. simpl.
-      apply in_or_app. left. apply in_flat_map. exists x. split.
-      apply in_map_iff in H0. destruct H0, H0. inversion H0. subst x4. exact H7.
-      apply in_map_iff. exists z. split. reflexivity. exact H6.
-    + apply in_flat_map in H. destruct H, H. apply in_map_iff in H1. destruct H1, H1.
-      subst r. destruct t1; try contradiction H0. apply in_flat_map in H0. destruct H0, H0. 
-      apply in_map_iff in H1. destruct H1, H1. subst s.
-      unfold decrFreeVars. rewrite mapFreeVars_parallelBeta.
-      specialize (IHt1 x (BLam x1) H (in_map BLam _ _ H0)). simpl in H.
-      apply in_map_iff in H. destruct H, H. subst x. simpl in IHt1.
-      destruct IHt1 as [y H]. destruct H. apply in_map_iff in H4. destruct H4, H4. subst y.
-      specialize (IHt2 x2 x0 H3 H2). destruct IHt2 as [z H4]. destruct H4.
-      exists (mapFreeVars Nat.pred (Subst x (incrFreeVars z) 0)). split. simpl.
-      apply in_or_app. left.
-      apply in_flat_map. exists x. split. apply in_map_iff in H. destruct H, H.
-      inversion H. subst x4. exact H7. apply in_map_iff. exists z.
-      split. reflexivity. exact H6.
-      apply in_map_iff. exists (Subst x (incrFreeVars z) 0).
-      split. reflexivity. apply parallelBeta_Subst. 2: exact H5.
+      specialize (IHt1 r1 (BLam s1) H0 (in_map BLam _ _ H3)) as [y H]. simpl in H0.
+      apply in_map_iff in H0. destruct H0, H0. subst r1. 
+      destruct H. simpl in H. apply in_map_iff in H. destruct H, H. subst y.
+      exists (mapFreeVars Nat.pred (Subst x0 (incrFreeVars u2) 0)). split.
+      simpl. apply in_flat_map. exists u2. split. apply H5.
+      apply in_or_app. left. apply in_map_iff. exists x0. split. reflexivity.
+      exact H6. apply in_map_iff. exists (Subst x0 (incrFreeVars u2) 0).
+      split. reflexivity. apply parallelBeta_Subst. 
       unfold incrFreeVars. rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H4.
-    + apply in_flat_map in H. destruct H, H. apply in_flat_map in H0. destruct H0, H0.
-      apply in_map_iff in H1. destruct H1, H1. apply in_map_iff in H2. destruct H2, H2.
-      subst r. subst s. specialize (IHt1 x x0 H H0). destruct IHt1 as [y H1]. destruct H1.
-      specialize (IHt2 _ _ H3 H4). destruct IHt2 as [z H5]. destruct H5.
-      exists (BApp y z). split. simpl. apply in_or_app. right.
-      apply in_flat_map. exists y. split. exact H1. apply in_map_iff. exists z.
-      split. reflexivity. exact H5. simpl. apply in_or_app. right.
-      apply in_flat_map. exists y. split. exact H2. apply in_map_iff. exists z.
-      split. reflexivity. exact H6.
+      exists u2. split. reflexivity. apply H5.
+      simpl in H0. apply in_map_iff in H0. destruct H0, H. inversion H.
+      subst x1. exact H0.
+    + (* Both r and s are sub-applications.
+         This case is easy, it just commutes the induction hypotheses on t1 and t2. *)
+      apply in_map_iff in H. destruct H as [r1 [H4 H]]. subst r.
+      apply in_map_iff in H0. destruct H0 as [s1 [H4 H0]]. subst s.
+      specialize (IHt1 _ _ H H0) as [u1 H3]. 
+      exists (BApp u1 u2). split; simpl; apply in_flat_map; exists u2; split.
+      apply H5. apply in_or_app. right. apply in_map_iff. exists u1. split. reflexivity. apply H3.
+      apply H5. apply in_or_app. right. apply in_map_iff. exists u1. split. reflexivity. apply H3.
 Qed.
 
 Definition parallelBetaTrans := reflTransClos parallelBeta.
@@ -2495,7 +2469,7 @@ Lemma diamondStrip : forall (n : nat) (step : DeBruijnTerm -> list DeBruijnTerm)
 Proof.
   (* This proof applies diamond step n times *)
   induction n.
-  - intros. simpl in H1. destruct H1. 2: contradiction H1. subst r. exists u. 
+  - intros. simpl in H1. destruct H1. 2: contradiction H1. subst r. exists u.
     split. exact H0. left. reflexivity.
   - intros. rewrite reflTransClos_succ in H1. apply in_flat_map in H1.
     destruct H1 as [t1 H1]. destruct H1.
@@ -2504,7 +2478,7 @@ Proof.
     exists s. destruct H5. split. exact H5. rewrite reflTransClos_succ.
     apply in_flat_map. exists d. split. exact H3. exact H6.
 Qed.
- 
+
 Lemma diamondTrans : forall (step : DeBruijnTerm -> list DeBruijnTerm),
     diamond step
     -> forall (n p : nat) (t r s : DeBruijnTerm),
@@ -2659,77 +2633,3 @@ Proof.
     destruct H0, H. destruct x; discriminate H.
 Qed.
 
-
-(* The denotational semantics of untyped lambda calculus.
-
-   Discovered by Dana Scott in 1969, they are categorical semantics,
-   that interpret lambda-terms as morphisms in an exotic category,
-   not as mere functions in the category of sets. *)
-
-Fixpoint Dn (n : nat) : Set :=
-  match n with 
-  | O => bool (* tells whether the calculation terminates *)
-  | S p => (Dn p -> Dn p)
-  end.
-
-(* The retract Dn n <--> Dn (S n) *)
-Fixpoint Dretract (n : nat) {struct n} : prod (Dn n -> Dn (S n)) (Dn (S n) -> Dn n).
-Proof.
-  destruct n.
-  - exact (fun (b _:bool) => b, fun (f:bool -> bool) => f true).
-  - destruct (Dretract n) as [e p].
-    exact (fun f x => e (f (p x)), fun g x => p (g (e x))).
-Defined.
-Definition Dapprox (n : nat) : Dn (S n) -> Dn n := snd (Dretract n).
-Definition Drefine (n : nat) : Dn n -> Dn (S n) := fst (Dretract n).
-
-Lemma Dapprox_step : forall n (f : Dn (S (S n))),
-    Dapprox (S n) f = fun (x : Dn n) => Dapprox n (f (Drefine n x)).
-Proof.
-  intros. unfold Dapprox, Drefine. simpl. destruct (Dretract n); reflexivity.
-Qed.
-Lemma Drefine_step : forall n (f : Dn (S n)),
-    Drefine (S n) f = fun (x : Dn (S n)) => Drefine n (f (Dapprox n x)).
-Proof.
-  intros. unfold Dapprox, Drefine. simpl. destruct (Dretract n); reflexivity.
-Qed.
-
-Fixpoint DnLe (n : nat) (f g : Dn n) {struct n} : Prop.
-Proof.
-  destruct n.
-  - exact (Bool.le f g).
-  - exact (forall x, DnLe n (f x) (g x)). 
-Defined.
-
-(* That predicate is recursively extensional, is never uses equality on functions. *)
-Definition DnEq (n : nat) (f g : Dn n) : Prop := DnLe n f g /\ DnLe n g f.
-
-Lemma DnLe_trans : forall n f g h, DnLe n f g -> DnLe n g h -> DnLe n f h.
-Proof.
-  induction n.
-  - simpl. unfold Bool.le. intros. destruct f. 2: reflexivity.
-    rewrite H in H0. exact H0.
-  - simpl. intros. apply (IHn _ (g x)). apply H. apply H0.
-Qed.
-
-Definition DnIncr n (f : Dn n) : Prop.
-Proof.
-  destruct n.
-  - exact True.
-  - exact (forall x y, DnLe n x y -> DnLe n (f x) (f y)).
-Defined.
-
-(* Maybe we can get rid of funext and use DnEq instead *)
-Require Import Coq.Logic.FunctionalExtensionality.
-Lemma Dretract_is_retract : forall n (x : Dn n),
-    Dapprox _ (Drefine _ x) = x.
-Proof.
-  induction n.
-  - reflexivity.
-  - intros. rewrite Dapprox_step, Drefine_step.
-    apply functional_extensionality; intro y. rewrite IHn, IHn. reflexivity.
-Qed.
-
-Definition Dinfinity : Set := forall (n:nat), Dn n.
-Definition DinfinityLe (f g : Dinfinity) : Prop :=
-  forall n, DnLe n (f n) (g n).

@@ -1903,7 +1903,7 @@ Lemma areBetaEquivalentDB_app_right : forall t u r,
     areBetaEquivalentDB t u -> areBetaEquivalentDB (BApp t r) (BApp u r).
 Proof.
   intros t u r H. induction H.
-  - intros. apply rst_step. simpl. 
+  - intros. apply rst_step. simpl.
     apply in_or_app. right. apply in_or_app. left. apply in_map_iff.
     exists y. split. reflexivity. exact H.
   - apply rst_refl.
@@ -2375,10 +2375,10 @@ Lemma parallelBeta_ind : forall (P : DeBruijnTerm -> DeBruijnTerm -> Prop),
     (forall (v:nat), P (BVar v) (BVar v))
     -> (forall t u, In u (parallelBeta t) -> P t u -> P (BLam t) (BLam u))
     -> (forall t1 t2 u1 u2,
-           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) -> 
+           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) ->
            P (BApp (BLam t1) t2) (decrFreeVars (Subst u1 (incrFreeVars u2) 0)))
     -> (forall t1 t2 u1 u2,
-           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) -> 
+           In u1 (parallelBeta t1) -> In u2 (parallelBeta t2) ->
            P t1 u1 -> P t2 u2 ->
            P (BApp t1 t2) (BApp u1 u2))
     -> forall t u, In u (parallelBeta t) -> P t u.
@@ -2386,7 +2386,7 @@ Proof.
   intros P pVar pLam pRedex pApp. induction t.
   - intros. simpl in H. destruct H. rewrite <- H. apply pVar. contradiction H.
   - intros. simpl in H. apply in_map_iff in H. destruct H, H. subst u. apply pLam. exact H0.
-    apply IHt, H0. 
+    apply IHt, H0.
   - intros. simpl in H. apply in_app_or in H. destruct H.
     + destruct t1; try contradiction H. apply in_flat_map in H.
       destruct H, H. apply in_map_iff in H0. destruct H0, H0. subst u.
@@ -2426,17 +2426,17 @@ Proof.
       destruct IHt1 as [y H1]. destruct H1.
       specialize (IHt2 _ _ H2 H3). destruct IHt2 as [z H5]. destruct H5.
       simpl in H4. apply in_map_iff in H4. destruct H4, H4. subst y.
-      exists (mapFreeVars Nat.pred (Subst x3 (incrFreeVars z) 0)). split. 
+      exists (mapFreeVars Nat.pred (Subst x3 (incrFreeVars z) 0)). split.
       unfold decrFreeVars. rewrite mapFreeVars_parallelBeta. apply in_map_iff.
       exists (Subst x3 (incrFreeVars z) 0). split. reflexivity.
       apply parallelBeta_Subst. 2: exact H7. unfold incrFreeVars.
       rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H6. 
+      exists z. split. reflexivity. exact H6.
       unfold decrFreeVars. rewrite mapFreeVars_parallelBeta. apply in_map_iff.
       exists (Subst x3 (incrFreeVars z) 0). split. reflexivity.
       apply parallelBeta_Subst. unfold incrFreeVars.
       rewrite mapFreeVars_parallelBeta. apply in_map_iff.
-      exists z. split. reflexivity. exact H5. 
+      exists z. split. reflexivity. exact H5.
       simpl in H1. apply in_map_iff in H1. destruct H1, H1. inversion H1.
       rewrite <- H9. exact H4.
     + apply in_flat_map in H0. destruct H0, H0. apply in_map_iff in H1. destruct H1, H1.
@@ -2456,7 +2456,7 @@ Proof.
       apply in_map_iff in H0. destruct H0, H0. inversion H0. subst x4. exact H7.
       apply in_map_iff. exists z. split. reflexivity. exact H6.
     + apply in_flat_map in H. destruct H, H. apply in_map_iff in H1. destruct H1, H1.
-      subst r. destruct t1; try contradiction H0. apply in_flat_map in H0. destruct H0, H0. 
+      subst r. destruct t1; try contradiction H0. apply in_flat_map in H0. destruct H0, H0.
       apply in_map_iff in H1. destruct H1, H1. subst s.
       unfold decrFreeVars. rewrite mapFreeVars_parallelBeta.
       specialize (IHt1 x (BLam x1) H (in_map BLam _ _ H0)). simpl in H.
@@ -2495,7 +2495,7 @@ Lemma diamondStrip : forall (n : nat) (step : DeBruijnTerm -> list DeBruijnTerm)
 Proof.
   (* This proof applies diamond step n times *)
   induction n.
-  - intros. simpl in H1. destruct H1. 2: contradiction H1. subst r. exists u. 
+  - intros. simpl in H1. destruct H1. 2: contradiction H1. subst r. exists u.
     split. exact H0. left. reflexivity.
   - intros. rewrite reflTransClos_succ in H1. apply in_flat_map in H1.
     destruct H1 as [t1 H1]. destruct H1.
@@ -2504,7 +2504,7 @@ Proof.
     exists s. destruct H5. split. exact H5. rewrite reflTransClos_succ.
     apply in_flat_map. exists d. split. exact H3. exact H6.
 Qed.
- 
+
 Lemma diamondTrans : forall (step : DeBruijnTerm -> list DeBruijnTerm),
     diamond step
     -> forall (n p : nat) (t r s : DeBruijnTerm),
@@ -2659,77 +2659,3 @@ Proof.
     destruct H0, H. destruct x; discriminate H.
 Qed.
 
-
-(* The denotational semantics of untyped lambda calculus.
-
-   Discovered by Dana Scott in 1969, they are categorical semantics,
-   that interpret lambda-terms as morphisms in an exotic category,
-   not as mere functions in the category of sets. *)
-
-Fixpoint Dn (n : nat) : Set :=
-  match n with 
-  | O => bool (* tells whether the calculation terminates *)
-  | S p => (Dn p -> Dn p)
-  end.
-
-(* The retract Dn n <--> Dn (S n) *)
-Fixpoint Dretract (n : nat) {struct n} : prod (Dn n -> Dn (S n)) (Dn (S n) -> Dn n).
-Proof.
-  destruct n.
-  - exact (fun (b _:bool) => b, fun (f:bool -> bool) => f true).
-  - destruct (Dretract n) as [e p].
-    exact (fun f x => e (f (p x)), fun g x => p (g (e x))).
-Defined.
-Definition Dapprox (n : nat) : Dn (S n) -> Dn n := snd (Dretract n).
-Definition Drefine (n : nat) : Dn n -> Dn (S n) := fst (Dretract n).
-
-Lemma Dapprox_step : forall n (f : Dn (S (S n))),
-    Dapprox (S n) f = fun (x : Dn n) => Dapprox n (f (Drefine n x)).
-Proof.
-  intros. unfold Dapprox, Drefine. simpl. destruct (Dretract n); reflexivity.
-Qed.
-Lemma Drefine_step : forall n (f : Dn (S n)),
-    Drefine (S n) f = fun (x : Dn (S n)) => Drefine n (f (Dapprox n x)).
-Proof.
-  intros. unfold Dapprox, Drefine. simpl. destruct (Dretract n); reflexivity.
-Qed.
-
-Fixpoint DnLe (n : nat) (f g : Dn n) {struct n} : Prop.
-Proof.
-  destruct n.
-  - exact (Bool.le f g).
-  - exact (forall x, DnLe n (f x) (g x)). 
-Defined.
-
-(* That predicate is recursively extensional, is never uses equality on functions. *)
-Definition DnEq (n : nat) (f g : Dn n) : Prop := DnLe n f g /\ DnLe n g f.
-
-Lemma DnLe_trans : forall n f g h, DnLe n f g -> DnLe n g h -> DnLe n f h.
-Proof.
-  induction n.
-  - simpl. unfold Bool.le. intros. destruct f. 2: reflexivity.
-    rewrite H in H0. exact H0.
-  - simpl. intros. apply (IHn _ (g x)). apply H. apply H0.
-Qed.
-
-Definition DnIncr n (f : Dn n) : Prop.
-Proof.
-  destruct n.
-  - exact True.
-  - exact (forall x y, DnLe n x y -> DnLe n (f x) (f y)).
-Defined.
-
-(* Maybe we can get rid of funext and use DnEq instead *)
-Require Import Coq.Logic.FunctionalExtensionality.
-Lemma Dretract_is_retract : forall n (x : Dn n),
-    Dapprox _ (Drefine _ x) = x.
-Proof.
-  induction n.
-  - reflexivity.
-  - intros. rewrite Dapprox_step, Drefine_step.
-    apply functional_extensionality; intro y. rewrite IHn, IHn. reflexivity.
-Qed.
-
-Definition Dinfinity : Set := forall (n:nat), Dn n.
-Definition DinfinityLe (f g : Dinfinity) : Prop :=
-  forall n, DnLe n (f n) (g n).
